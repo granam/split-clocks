@@ -1,0 +1,1461 @@
+<!doctype html>
+<html lang="cs">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Hodiny</title>
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+        }
+        body {
+            min-height: 100%;
+            background: #101418;
+            color: #e8ecf1;
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 2vh;
+            padding: 2vh 2vw;
+            box-sizing: border-box;
+        }
+        .controls {
+            display: flex;
+            gap: 1.5em;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .mode-switch {
+            display: inline-flex;
+            background: #1a1d22;
+            border: 1px solid #2b2f36;
+            border-radius: 999px;
+            padding: 4px;
+            user-select: none;
+        }
+        .mode-switch input {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+        .mode-switch label {
+            padding: 0.45em 1.1em;
+            border-radius: 999px;
+            cursor: pointer;
+            color: #a0a6ad;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background-color 0.15s, color 0.15s;
+        }
+        .mode-switch input:checked + label {
+            background: #c0392b;
+            color: #fff;
+        }
+        .mode-switch label:hover {
+            color: #e8ecf1;
+        }
+        .split-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5em;
+            cursor: pointer;
+            user-select: none;
+            font-size: 14px;
+            color: #a0a6ad;
+        }
+        .split-toggle input {
+            width: 16px;
+            height: 16px;
+            accent-color: #c0392b;
+            cursor: pointer;
+        }
+        .split-toggle:hover {
+            color: #e8ecf1;
+        }
+
+        main {
+            width: 100%;
+            max-width: min(95vw, 90vh * 2.4);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2vh;
+        }
+        .primary,
+        .secondary {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .view {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 2vw;
+        }
+        .view svg {
+            display: block;
+            max-height: 80vh;
+        }
+
+        /* Primary: show the active main view. */
+        body:not([data-split="true"])[data-mode="analog"]  #analog-unified  { display: flex; }
+        body:not([data-split="true"])[data-mode="digital"] #digital-unified { display: flex; }
+        body[data-split="true"][data-mode="analog"]        #analog-split    { display: flex; }
+        body[data-split="true"][data-mode="digital"]       #digital-split   { display: flex; }
+        .view { display: none; }
+
+        /* Secondary: visible only when Oboje is on, showing the opposite mode at 50% size. */
+        .secondary { display: none; }
+        body[data-both="true"] .secondary { display: flex; }
+        body[data-both="true"]:not([data-split="true"])[data-mode="analog"]  #digital-unified-secondary { display: flex; }
+        body[data-both="true"]:not([data-split="true"])[data-mode="digital"] #analog-unified-secondary  { display: flex; }
+        body[data-both="true"][data-split="true"][data-mode="analog"]        #digital-split-secondary   { display: flex; }
+        body[data-both="true"][data-split="true"][data-mode="digital"]       #analog-split-secondary    { display: flex; }
+
+        #analog-unified svg  { width: min(75vw, 62vh); height: min(75vw, 62vh); }
+        #digital-unified svg { width: min(90vw, 36vh * 360 / 130); }
+        #analog-split svg    { width: min(28vw, 60vh); height: min(28vw, 60vh); }
+        #digital-split svg   { width: min(20vw, 28vh * 110 / 130); }
+
+        /* When Oboje is on, primary shrinks to leave room for the secondary below. */
+        body[data-both="true"] #analog-unified svg  { width: min(60vw, 50vh); height: min(60vw, 50vh); }
+        body[data-both="true"] #digital-unified svg { width: min(70vw, 25vh * 360 / 130); }
+        body[data-both="true"] #analog-split svg    { width: min(22vw, 44vh); height: min(22vw, 44vh); }
+        body[data-both="true"] #digital-split svg   { width: min(16vw, 20vh * 110 / 130); }
+
+        /* Secondary views are 50% the size of their (Oboje-shrunk) primary counterparts. */
+        #analog-unified-secondary svg  { width: min(30vw, 25vh); height: min(30vw, 25vh); }
+        #digital-unified-secondary svg { width: min(35vw, 12.5vh * 360 / 130); }
+        #analog-split-secondary svg    { width: min(11vw, 22vh); height: min(11vw, 22vh); }
+        #digital-split-secondary svg   { width: min(8vw, 10vh * 110 / 130); }
+
+        .split-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.8em;
+        }
+        .split-label {
+            font-size: 14px;
+            color: #a0a6ad;
+            letter-spacing: 0.05em;
+        }
+
+        /* Analog */
+        .face {
+            fill: #f4f1ea;
+            stroke: #2b2f36;
+            stroke-width: 2;
+        }
+        .tick-hour {
+            stroke: #2b2f36;
+            stroke-width: 2.5;
+            stroke-linecap: round;
+        }
+        .tick-minute {
+            stroke: #7a8088;
+            stroke-width: 1;
+            stroke-linecap: round;
+        }
+        .numeral {
+            fill: #2b2f36;
+            font-size: 10px;
+            font-weight: 600;
+            text-anchor: middle;
+            dominant-baseline: central;
+            font-family: Georgia, 'Times New Roman', serif;
+        }
+        /* Secondary numerals for 24h mode — 13..23, 0 rendered at the outer ring
+           in a smaller, lighter face so the main 1..12 stay dominant. */
+        .numeral-alt {
+            fill: #6a6f78;
+            font-size: 7px;
+            font-weight: 500;
+            text-anchor: middle;
+            dominant-baseline: central;
+            font-family: Georgia, 'Times New Roman', serif;
+        }
+        .hand-hour   { stroke: #1a1d22; stroke-width: 5;   stroke-linecap: round; }
+        .hand-minute { stroke: #1a1d22; stroke-width: 3;   stroke-linecap: round; }
+        .hand-second { stroke: #c0392b; stroke-width: 1.2; stroke-linecap: round; }
+        .pin {
+            fill: #c0392b;
+            stroke: #1a1d22;
+            stroke-width: 1;
+        }
+
+        /* Skokově: hide ms readouts in digital modes. */
+        body[data-jump="true"] .ms-region { display: none; }
+        body[data-jump="true"] .ms-panel  { display: none; }
+
+        /* Digital — seven-segment */
+        .seg-bg    { fill: #1a1d22; }
+        .seg-off   { fill: #2a1010; }
+        .seg-on    { fill: #ff3b2f; filter: drop-shadow(0 0 2px #ff3b2f); }
+        .colon-dot { fill: #ff3b2f; filter: drop-shadow(0 0 2px #ff3b2f); }
+        .colon-off { fill: #2a1010; }
+
+        /* Timeline slider — spans the full width, shows hour ticks. */
+        .timeline {
+            width: 100%;
+            max-width: min(95vw, 90vh * 2.4);
+            padding: 0 8px 10px;
+            box-sizing: border-box;
+        }
+        /* Curved timeline: a rectangular hit area with an SVG arc drawn inside.
+           The arc represents the sun's path — horizon at the edges, zenith at noon.
+           Ticks/labels/thumbs are positioned along the arc via JS-computed `top` offsets,
+           while the X coordinate is still linear so the drag math is unchanged. */
+        .timeline-track {
+            position: relative;
+            width: 100%;
+            height: 72px;
+            background: transparent;
+            border: none;
+            border-radius: 6px;
+            overflow: visible;
+        }
+        .timeline-sky {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        .timeline-tick {
+            position: absolute;
+            width: 1px;
+            background: #7a8088;
+            transform: translateX(-0.5px);
+        }
+        .timeline-tick.quarter { height: 6px; }
+        .timeline-tick.half    { height: 10px; }
+        .timeline-tick.major {
+            height: 14px;
+            background: #c0c4cb;
+        }
+        .timeline-label {
+            position: absolute;
+            font-size: 11px;
+            color: #a0a6ad;
+            transform: translateX(-50%);
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+        /* Keep the first and last labels from clipping outside the track edges. */
+        .timeline-label.edge-start { transform: translateX(0); }
+        .timeline-label.edge-end   { transform: translateX(-100%); }
+        /* Sky icons — night/dawn/noon/sunset — sit on a row just below the labels. */
+        .timeline-icon {
+            position: absolute;
+            width: 32px;
+            height: 32px;
+            transform: translateX(-50%);
+            display: block;
+            pointer-events: none;
+        }
+        .timeline-icon.edge-start { transform: translateX(0); }
+        .timeline-icon.edge-end   { transform: translateX(-100%); }
+        .timeline-thumb {
+            position: absolute;
+            width: 3px;
+            height: 24px;
+            background: #c0392b;
+            box-shadow: 0 0 6px #c0392b;
+            transform: translate(-1.5px, -50%);
+            pointer-events: none;
+            z-index: 1;
+        }
+        /* Manual (draggable) thumb — orange, sits above the live thumb. */
+        .timeline-thumb-manual {
+            position: absolute;
+            width: 5px;
+            height: 28px;
+            background: #f39c12;
+            box-shadow: 0 0 8px #f39c12;
+            transform: translate(-2.5px, -50%);
+            cursor: ew-resize;
+            z-index: 2;
+            display: none;
+        }
+        body[data-locked="false"] .timeline-thumb-manual { display: block; }
+        body[data-locked="false"] .timeline-thumb        { opacity: 0.5; z-index: 1; }
+
+        /* Lock toggle — standard .split-toggle checkbox with an emoji label. */
+        .lock-toggle .lock-icon::before { content: '🔒'; }
+        body[data-locked="false"] .lock-toggle .lock-icon::before { content: '🔓'; }
+        .lock-toggle .lock-icon { font-size: 16px; line-height: 1; }
+
+        /* Speak button */
+        .speak-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #1a1d22;
+            border: 1px solid #2b2f36;
+            color: #e8ecf1;
+            border-radius: 999px;
+            width: 34px;
+            height: 34px;
+            font-size: 16px;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+        .speak-button:hover { background: #2b2f36; }
+        .speak-button:active { background: #c0392b; }
+        .voice-select {
+            background: #1a1d22;
+            color: #e8ecf1;
+            border: 1px solid #2b2f36;
+            border-radius: 6px;
+            padding: 6px 8px;
+            font-size: 13px;
+            max-width: 26ch;
+            cursor: pointer;
+        }
+
+        /* AM/PM indicator — visible only in 12h digital mode. */
+        .ampm-label {
+            font-size: 14px;
+            font-weight: 700;
+            font-family: system-ui, sans-serif;
+            fill: #2a1010;
+            dominant-baseline: central;
+        }
+        .ampm-on {
+            fill: #ff3b2f;
+            filter: drop-shadow(0 0 2px #ff3b2f);
+        }
+        body[data-hour24="true"] .ampm-indicator { display: none; }
+    </style>
+</head>
+<body data-mode="analog" data-split="false" data-jump="false" data-both="false" data-hour24="false" data-locked="true">
+    <div class="controls">
+        <div class="mode-switch" role="radiogroup" aria-label="Režim hodin">
+            <input type="radio" id="mode-analog" name="mode" value="analog" checked>
+            <label for="mode-analog">Analogové</label>
+            <input type="radio" id="mode-digital" name="mode" value="digital">
+            <label for="mode-digital">Digitální</label>
+        </div>
+        <label class="split-toggle">
+            <input type="checkbox" id="both-toggle">
+            <span>Oboje</span>
+        </label>
+    </div>
+    <div class="controls">
+        <label class="split-toggle">
+            <input type="checkbox" id="split-toggle">
+            <span>Rozděleně</span>
+        </label>
+        <label class="split-toggle">
+            <input type="checkbox" id="jump-toggle">
+            <span>Skokově</span>
+        </label>
+        <label class="split-toggle">
+            <input type="checkbox" id="hour24-toggle">
+            <span>12/24</span>
+        </label>
+        <label class="split-toggle lock-toggle" title="Zamknout čas / odemknout pro ruční změnu">
+            <input type="checkbox" id="lock-toggle" checked>
+            <span class="lock-icon" aria-label="Zamknout čas"></span>
+        </label>
+        <button type="button" id="speak-button" class="speak-button" title="Přečíst čas nahlas" aria-label="Přečíst čas nahlas">🔊</button>
+        <select id="voice-select" class="voice-select" title="Český hlas" aria-label="Český hlas"></select>
+    </div>
+
+    <div class="timeline" aria-label="Časová osa">
+        <div id="timeline-track" class="timeline-track">
+            <svg class="timeline-sky" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                <defs>
+                    <linearGradient id="sky-fill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%"   stop-color="#2a3550"/>
+                        <stop offset="55%"  stop-color="#1a1d22"/>
+                        <stop offset="100%" stop-color="#13161a"/>
+                    </linearGradient>
+                </defs>
+                <path d="M 0 100 Q 50 -40 100 100 L 100 100 L 0 100 Z" fill="url(#sky-fill)"/>
+                <path d="M 0 100 Q 50 -40 100 100" fill="none" stroke="#5a6778" stroke-width="0.6" vector-effect="non-scaling-stroke"/>
+            </svg>
+            <div id="timeline-thumb" class="timeline-thumb"></div>
+            <div id="timeline-thumb-manual" class="timeline-thumb-manual"
+                 role="slider" aria-label="Ruční čas"
+                 aria-valuemin="0" aria-valuemax="24" tabindex="0"></div>
+        </div>
+    </div>
+
+    <main>
+        <div class="primary">
+            <div id="analog-unified"  class="view"></div>
+            <div id="digital-unified" class="view"></div>
+            <div id="analog-split"    class="view"></div>
+            <div id="digital-split"   class="view"></div>
+        </div>
+        <div class="secondary">
+            <div id="analog-unified-secondary"  class="view"></div>
+            <div id="digital-unified-secondary" class="view"></div>
+            <div id="analog-split-secondary"    class="view"></div>
+            <div id="digital-split-secondary"   class="view"></div>
+        </div>
+    </main>
+
+    <script>
+        const svgNamespace = 'http://www.w3.org/2000/svg';
+
+        // -------- Shared SVG helpers --------
+        function createSvgElement(tagName, attributes = {}) {
+            const element = document.createElementNS(svgNamespace, tagName);
+            for (const [attributeName, attributeValue] of Object.entries(attributes)) {
+                element.setAttribute(attributeName, attributeValue);
+            }
+            return element;
+        }
+
+        // -------- Analog clock face builders --------
+        // `options` chooses which parts to include so the same builder produces
+        // both the unified face and the three split faces.
+        // Populate (or repopulate) the numerals group.
+        // The face always has 12 hour-positions (or 60 for minute/second faces).
+        // `labels` is an array of strings placed clockwise starting from the 1-o'clock
+        // position (so the last label sits at the top). For minute/second faces, pass
+        // null/undefined and we generate "5, 10, ..., 55, 0".
+        function populateHourNumerals(numeralsGroup, labels, secondaryLabels) {
+            while (numeralsGroup.firstChild) numeralsGroup.removeChild(numeralsGroup.firstChild);
+            for (let positionIndex = 0; positionIndex < 12; positionIndex++) {
+                const angleDegrees = (positionIndex + 1) * 30 - 90;
+                const angleRadians = angleDegrees * Math.PI / 180;
+                const primaryRadius = 70;
+                const primaryX = Math.cos(angleRadians) * primaryRadius;
+                const primaryY = Math.sin(angleRadians) * primaryRadius;
+                const primaryText = createSvgElement('text', {
+                    class: 'numeral',
+                    x: primaryX.toFixed(2),
+                    y: primaryY.toFixed(2),
+                });
+                primaryText.textContent = labels[positionIndex];
+                numeralsGroup.appendChild(primaryText);
+
+                if (secondaryLabels) {
+                    // Classic 24-hour dial: secondary 13..0 numerals sit as a smaller
+                    // inner ring beneath the primary 1..12, clear of the tick band at 80..90.
+                    const secondaryRadius = 54;
+                    const secondaryX = Math.cos(angleRadians) * secondaryRadius;
+                    const secondaryY = Math.sin(angleRadians) * secondaryRadius;
+                    const secondaryText = createSvgElement('text', {
+                        class: 'numeral-alt',
+                        x: secondaryX.toFixed(2),
+                        y: secondaryY.toFixed(2),
+                    });
+                    secondaryText.textContent = secondaryLabels[positionIndex];
+                    numeralsGroup.appendChild(secondaryText);
+                }
+            }
+        }
+        function populateMinuteNumerals(numeralsGroup) {
+            while (numeralsGroup.firstChild) numeralsGroup.removeChild(numeralsGroup.firstChild);
+            for (let numeralValue = 5; numeralValue <= 60; numeralValue += 5) {
+                const angleRadians = (numeralValue * 6 - 90) * Math.PI / 180;
+                const numeralRadius = 70;
+                const positionX = Math.cos(angleRadians) * numeralRadius;
+                const positionY = Math.sin(angleRadians) * numeralRadius;
+                const displayValue = numeralValue === 60 ? '0' : String(numeralValue);
+                const numeralText = createSvgElement('text', {
+                    class: 'numeral',
+                    x: positionX.toFixed(2),
+                    y: positionY.toFixed(2),
+                });
+                numeralText.textContent = displayValue;
+                numeralsGroup.appendChild(numeralText);
+            }
+        }
+        const HOUR_LABELS_12 = ['1','2','3','4','5','6','7','8','9','10','11','12'];
+        const HOUR_LABELS_24 = ['13','14','15','16','17','18','19','20','21','22','23','0'];
+
+        function buildAnalogClockSvg(options) {
+            const {
+                includeHourHand = true,
+                includeMinuteHand = true,
+                includeSecondHand = true,
+                faceKind = 'hour',  // 'hour' → 1..12 / 13..0 toggled; 'minute' → 5..55,0
+                ariaLabel = 'Analogové hodiny',
+            } = options;
+
+            const clockSvg = createSvgElement('svg', {
+                viewBox: '-100 -100 200 200',
+                role: 'img',
+                'aria-label': ariaLabel,
+            });
+
+            clockSvg.appendChild(createSvgElement('circle', {
+                class: 'face', cx: 0, cy: 0, r: 98,
+            }));
+
+            // 60 tick marks — major every 5.
+            const ticksGroup = createSvgElement('g');
+            for (let tickIndex = 0; tickIndex < 60; tickIndex++) {
+                const isHourTick = tickIndex % 5 === 0;
+                ticksGroup.appendChild(createSvgElement('line', {
+                    x1: 0, x2: 0,
+                    y1: -90, y2: isHourTick ? -80 : -85,
+                    class: isHourTick ? 'tick-hour' : 'tick-minute',
+                    transform: `rotate(${tickIndex * 6})`,
+                }));
+            }
+            clockSvg.appendChild(ticksGroup);
+
+            const numeralsGroup = createSvgElement('g');
+            if (faceKind === 'hour') {
+                populateHourNumerals(numeralsGroup, HOUR_LABELS_12);
+            } else {
+                populateMinuteNumerals(numeralsGroup);
+            }
+            clockSvg.appendChild(numeralsGroup);
+
+            // Hands.
+            const hands = {};
+            if (includeHourHand) {
+                hands.hour = createSvgElement('line', {
+                    class: 'hand-hour', x1: 0, y1: 10, x2: 0, y2: -50,
+                });
+                clockSvg.appendChild(hands.hour);
+            }
+            if (includeMinuteHand) {
+                hands.minute = createSvgElement('line', {
+                    class: 'hand-minute', x1: 0, y1: 14, x2: 0, y2: -72,
+                });
+                clockSvg.appendChild(hands.minute);
+            }
+            if (includeSecondHand) {
+                hands.second = createSvgElement('line', {
+                    class: 'hand-second', x1: 0, y1: 20, x2: 0, y2: -80,
+                });
+                clockSvg.appendChild(hands.second);
+            }
+
+            clockSvg.appendChild(createSvgElement('circle', {
+                class: 'pin', cx: 0, cy: 0, r: 3,
+            }));
+
+            return { clockSvg, hands, numeralsGroup, faceKind };
+        }
+
+        // -------- Seven-segment builders --------
+        // Segment polygons inside a 40 × 80 digit box, origin at top-left.
+        const segmentPolygons = {
+            a: '4,2 36,2 32,6 8,6',
+            b: '38,4 38,36 34,38 32,34 32,10',
+            c: '38,44 38,76 34,74 32,70 32,46',
+            d: '4,78 36,78 32,74 8,74',
+            e: '2,44 6,46 6,70 4,76 2,74',
+            f: '2,4 6,10 6,34 4,38 2,36',
+            g: '4,40 8,37 32,37 36,40 32,43 8,43',
+        };
+        const digitSegments = {
+            '0': ['a','b','c','d','e','f'],
+            '1': ['b','c'],
+            '2': ['a','b','d','e','g'],
+            '3': ['a','b','c','d','g'],
+            '4': ['b','c','f','g'],
+            '5': ['a','c','d','f','g'],
+            '6': ['a','c','d','e','f','g'],
+            '7': ['a','b','c'],
+            '8': ['a','b','c','d','e','f','g'],
+            '9': ['a','b','c','d','f','g'],
+        };
+
+        function buildSevenSegmentDigit(offsetX, offsetY) {
+            const digitGroup = createSvgElement('g', {
+                transform: `translate(${offsetX}, ${offsetY})`,
+            });
+            const segmentElements = {};
+            for (const segmentKey of Object.keys(segmentPolygons)) {
+                const segmentPolygon = createSvgElement('polygon', {
+                    points: segmentPolygons[segmentKey],
+                    class: 'seg-off',
+                });
+                digitGroup.appendChild(segmentPolygon);
+                segmentElements[segmentKey] = segmentPolygon;
+            }
+            return { digitGroup, segmentElements };
+        }
+
+        function setSevenSegmentDigit(segmentElements, digitCharacter) {
+            const activeSegments = digitSegments[digitCharacter] || [];
+            for (const segmentKey of Object.keys(segmentElements)) {
+                segmentElements[segmentKey].setAttribute(
+                    'class',
+                    activeSegments.includes(segmentKey) ? 'seg-on' : 'seg-off'
+                );
+            }
+        }
+
+        function buildDigitalPanel(options) {
+            const {
+                digitCount = 2,
+                ariaLabel = 'Digitální hodiny',
+                includeAmPm = false,
+            } = options;
+
+            // Digit box 40 wide. Padding 10 on each side, 6 between digits in a pair.
+            // For a two-digit panel: width = 10 + 40 + 6 + 40 + 10 = 106 → round to 110.
+            // Height kept at 130 for visual consistency with the unified panel.
+            const extraForAmPm = includeAmPm ? 30 : 0;
+            const panelWidth = 20 + digitCount * 40 + (digitCount - 1) * 6 + extraForAmPm;
+            const panelSvg = createSvgElement('svg', {
+                viewBox: `0 0 ${panelWidth} 130`,
+                role: 'img',
+                'aria-label': ariaLabel,
+            });
+            panelSvg.appendChild(createSvgElement('rect', {
+                class: 'seg-bg', x: 0, y: 0, width: panelWidth, height: 130, rx: 12,
+            }));
+
+            const digits = [];
+            const topY = 25;
+            for (let digitIndex = 0; digitIndex < digitCount; digitIndex++) {
+                const offsetX = 10 + digitIndex * 46;
+                const { digitGroup, segmentElements } = buildSevenSegmentDigit(offsetX, topY);
+                panelSvg.appendChild(digitGroup);
+                digits.push(segmentElements);
+            }
+
+            let ampm = null;
+            if (includeAmPm) {
+                const ampmGroup = createSvgElement('g', { class: 'ampm-indicator' });
+                const ampmX = 10 + digitCount * 46 + 4;
+                const amText = createSvgElement('text', {
+                    class: 'ampm-label', x: ampmX + 10, y: 60, 'text-anchor': 'middle',
+                });
+                amText.textContent = 'AM';
+                const pmText = createSvgElement('text', {
+                    class: 'ampm-label', x: ampmX + 10, y: 100, 'text-anchor': 'middle',
+                });
+                pmText.textContent = 'PM';
+                ampmGroup.appendChild(amText);
+                ampmGroup.appendChild(pmText);
+                panelSvg.appendChild(ampmGroup);
+                ampm = { amText, pmText };
+            }
+
+            return { panelSvg, digits, ampm };
+        }
+
+        function buildUnifiedDigitalClock() {
+            // HH : MM : SS . mmm across a 500-wide canvas.
+            // ms digits are drawn at 60% size to visually signal they're a smaller unit.
+            const panelSvg = createSvgElement('svg', {
+                viewBox: '0 0 500 130',
+                role: 'img',
+                'aria-label': 'Digitální hodiny',
+            });
+            panelSvg.appendChild(createSvgElement('rect', {
+                class: 'seg-bg', x: 0, y: 0, width: 500, height: 130, rx: 12,
+            }));
+
+            const digits = [];
+            const topY = 25;
+            const digitOffsets = [10, 56, 126, 172, 242, 288];
+            for (const offsetX of digitOffsets) {
+                const { digitGroup, segmentElements } = buildSevenSegmentDigit(offsetX, topY);
+                panelSvg.appendChild(digitGroup);
+                digits.push(segmentElements);
+            }
+
+            const colons = [];
+            for (const colonX of [112, 228]) {
+                const topDot = createSvgElement('circle', {
+                    cx: colonX, cy: 70, r: 3.5, class: 'colon-dot',
+                });
+                const bottomDot = createSvgElement('circle', {
+                    cx: colonX, cy: 100, r: 3.5, class: 'colon-dot',
+                });
+                panelSvg.appendChild(topDot);
+                panelSvg.appendChild(bottomDot);
+                colons.push([topDot, bottomDot]);
+            }
+
+            // Ms region (decimal point + 3 small digits) — wrapped so Skokově can hide it.
+            const msRegion = createSvgElement('g', { class: 'ms-region' });
+            msRegion.appendChild(createSvgElement('circle', {
+                cx: 344, cy: 100, r: 3.5, class: 'colon-dot',
+            }));
+
+            // Three smaller ms digits at 60% scale, each in its own translated+scaled group.
+            // Digit box scaled: 40 * 0.6 = 24 wide, 80 * 0.6 = 48 tall.
+            // Start at x=352, vertical-align to bottom of main digits (topY=25, height=80 → bottom=105).
+            // ms bottom should match → topY_ms = 105 - 48 = 57.
+            const msDigits = [];
+            for (let msDigitIndex = 0; msDigitIndex < 3; msDigitIndex++) {
+                const offsetX = 352 + msDigitIndex * 28;
+                const scaledGroup = createSvgElement('g', {
+                    transform: `translate(${offsetX}, 57) scale(0.6)`,
+                });
+                const { digitGroup, segmentElements } = buildSevenSegmentDigit(0, 0);
+                scaledGroup.appendChild(digitGroup);
+                msRegion.appendChild(scaledGroup);
+                msDigits.push(segmentElements);
+            }
+            panelSvg.appendChild(msRegion);
+
+            // AM/PM indicator — shown only in 12h mode (CSS-driven visibility).
+            const ampmGroup = createSvgElement('g', { class: 'ampm-indicator' });
+            const amText = createSvgElement('text', {
+                class: 'ampm-label', x: 462, y: 60, 'text-anchor': 'middle',
+            });
+            amText.textContent = 'AM';
+            const pmText = createSvgElement('text', {
+                class: 'ampm-label', x: 462, y: 100, 'text-anchor': 'middle',
+            });
+            pmText.textContent = 'PM';
+            ampmGroup.appendChild(amText);
+            ampmGroup.appendChild(pmText);
+            panelSvg.appendChild(ampmGroup);
+
+            return { panelSvg, digits, colons, msDigits, ampm: { amText, pmText } };
+        }
+
+        // -------- Build views --------
+
+        // Unified analog: one face with all three hands.
+        const unifiedAnalog = buildAnalogClockSvg({});
+        document.getElementById('analog-unified').appendChild(unifiedAnalog.clockSvg);
+        const unifiedAnalogSecondary = buildAnalogClockSvg({});
+        document.getElementById('analog-unified-secondary').appendChild(unifiedAnalogSecondary.clockSvg);
+
+        // Unified digital: HH:MM:SS panel.
+        const unifiedDigital = buildUnifiedDigitalClock();
+        document.getElementById('digital-unified').appendChild(unifiedDigital.panelSvg);
+        const unifiedDigitalSecondary = buildUnifiedDigitalClock();
+        document.getElementById('digital-unified-secondary').appendChild(unifiedDigitalSecondary.panelSvg);
+
+        // Split analog: three faces (hours, minutes, seconds), each with its own hand.
+        function makeSplitGroup(labelText, clockSvg) {
+            const groupElement = document.createElement('div');
+            groupElement.className = 'split-group';
+            groupElement.appendChild(clockSvg);
+            const labelElement = document.createElement('div');
+            labelElement.className = 'split-label';
+            labelElement.textContent = labelText;
+            groupElement.appendChild(labelElement);
+            return groupElement;
+        }
+
+        function buildSplitAnalogTriplet(containerElement) {
+            const hours = buildAnalogClockSvg({
+                includeHourHand: true, includeMinuteHand: false, includeSecondHand: false,
+                faceKind: 'hour', ariaLabel: 'Hodiny (analogové)',
+            });
+            const minutes = buildAnalogClockSvg({
+                includeHourHand: false, includeMinuteHand: true, includeSecondHand: false,
+                faceKind: 'minute', ariaLabel: 'Minuty (analogové)',
+            });
+            const seconds = buildAnalogClockSvg({
+                includeHourHand: false, includeMinuteHand: false, includeSecondHand: true,
+                faceKind: 'minute', ariaLabel: 'Sekundy (analogové)',
+            });
+            containerElement.appendChild(makeSplitGroup('Hodiny', hours.clockSvg));
+            containerElement.appendChild(makeSplitGroup('Minuty', minutes.clockSvg));
+            containerElement.appendChild(makeSplitGroup('Sekundy', seconds.clockSvg));
+            return { hours, minutes, seconds };
+        }
+
+        function buildSplitDigitalQuadruplet(containerElement) {
+            const hours = buildDigitalPanel({ ariaLabel: 'Hodiny (digitální)', includeAmPm: true });
+            const minutes = buildDigitalPanel({ ariaLabel: 'Minuty (digitální)' });
+            const seconds = buildDigitalPanel({ ariaLabel: 'Sekundy (digitální)' });
+            const ms = buildDigitalPanel({ digitCount: 3, ariaLabel: 'Milisekundy (digitální)' });
+            containerElement.appendChild(makeSplitGroup('Hodiny', hours.panelSvg));
+            containerElement.appendChild(makeSplitGroup('Minuty', minutes.panelSvg));
+            containerElement.appendChild(makeSplitGroup('Sekundy', seconds.panelSvg));
+            const msGroup = makeSplitGroup('Milisekundy', ms.panelSvg);
+            msGroup.classList.add('ms-panel');
+            containerElement.appendChild(msGroup);
+            return { hours, minutes, seconds, ms };
+        }
+
+        const splitAnalog = buildSplitAnalogTriplet(document.getElementById('analog-split'));
+        const splitAnalogSecondary = buildSplitAnalogTriplet(document.getElementById('analog-split-secondary'));
+        const splitDigital = buildSplitDigitalQuadruplet(document.getElementById('digital-split'));
+        const splitDigitalSecondary = buildSplitDigitalQuadruplet(document.getElementById('digital-split-secondary'));
+
+        // -------- Timeline --------
+        // Builds tick marks and hour labels. Hours span the full width of the track:
+        // 12h mode → 12 divisions (1..12); 24h mode → 24 divisions (1..24, shown as "0" at end).
+        const timelineTrack = document.getElementById('timeline-track');
+        const timelineThumb = document.getElementById('timeline-thumb');
+        const timelineThumbManual = document.getElementById('timeline-thumb-manual');
+
+        // The SVG arc uses a quadratic Bézier from (0,100) → (50,-40) → (100,100).
+        // For a linear X (x = 100·t), the curve's Y in viewBox units is:
+        //   y(t) = 100 + 280·t·(t - 1)
+        // Since preserveAspectRatio="none" stretches the viewBox to fill the track,
+        // the same formula (as a percentage) gives the CSS top to keep elements on the arc.
+        function arcTopPercentAt(percent) {
+            const normalised = percent / 100;
+            return 100 + 280 * normalised * (normalised - 1);
+        }
+
+        // Sky icons: compact inline-SVG markup for each time-of-day landmark.
+        // Viewbox 40×40; rendered at 32×32 via the `.timeline-icon` wrapper.
+        const SKY_ICON_MARKUP = {
+            // Deep-night sky with a crescent moon + two stars.
+            nightMoon: `
+                <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" aria-label="Noc">
+                    <circle cx="20" cy="20" r="19" fill="#10131a" stroke="#2b2f36" stroke-width="1"/>
+                    <path d="M 26 12 A 10 10 0 1 0 26 28 A 8 8 0 1 1 26 12 Z" fill="#e8ecf1"/>
+                    <circle cx="11" cy="14" r="0.9" fill="#e8ecf1"/>
+                    <circle cx="14" cy="25" r="0.7" fill="#e8ecf1"/>
+                    <circle cx="31" cy="31" r="0.6" fill="#e8ecf1"/>
+                </svg>`,
+            // Same circular night scene, slightly different moon phase & stars.
+            nightStars: `
+                <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" aria-label="Noc">
+                    <circle cx="20" cy="20" r="19" fill="#10131a" stroke="#2b2f36" stroke-width="1"/>
+                    <g fill="#e8ecf1">
+                        <path d="M 20 8 l 1.2 3 3 0.3 -2.3 2 0.7 3 -2.6 -1.6 -2.6 1.6 0.7 -3 -2.3 -2 3 -0.3 z"/>
+                        <circle cx="12" cy="22" r="0.9"/>
+                        <circle cx="28" cy="14" r="0.7"/>
+                        <circle cx="30" cy="27" r="0.8"/>
+                        <circle cx="15" cy="30" r="0.6"/>
+                    </g>
+                </svg>`,
+            // Sun rising above a horizon line — warm orange half-disc + short rays above.
+            dawnSun: `
+                <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" aria-label="Svítání">
+                    <defs>
+                        <linearGradient id="dawnGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%"  stop-color="#ffd27a"/>
+                            <stop offset="100%" stop-color="#ff8a3d"/>
+                        </linearGradient>
+                    </defs>
+                    <rect x="0" y="26" width="40" height="14" fill="#2a2018"/>
+                    <path d="M 8 26 A 12 12 0 0 1 32 26 Z" fill="url(#dawnGrad)"/>
+                    <g stroke="#ffb266" stroke-width="1.4" stroke-linecap="round">
+                        <line x1="20" y1="8"  x2="20" y2="13"/>
+                        <line x1="8"  y1="20" x2="12" y2="20"/>
+                        <line x1="28" y1="20" x2="32" y2="20"/>
+                        <line x1="11" y1="13" x2="14" y2="15"/>
+                        <line x1="29" y1="13" x2="26" y2="15"/>
+                    </g>
+                    <line x1="2" y1="26" x2="38" y2="26" stroke="#6a5030" stroke-width="0.8"/>
+                </svg>`,
+            // Full sun, bright yellow with a ring of rays.
+            noonSun: `
+                <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" aria-label="Poledne">
+                    <g stroke="#ffcf33" stroke-width="1.6" stroke-linecap="round">
+                        <line x1="20" y1="2"  x2="20" y2="8"/>
+                        <line x1="20" y1="32" x2="20" y2="38"/>
+                        <line x1="2"  y1="20" x2="8"  y2="20"/>
+                        <line x1="32" y1="20" x2="38" y2="20"/>
+                        <line x1="6"  y1="6"  x2="10" y2="10"/>
+                        <line x1="30" y1="30" x2="34" y2="34"/>
+                        <line x1="6"  y1="34" x2="10" y2="30"/>
+                        <line x1="30" y1="10" x2="34" y2="6"/>
+                    </g>
+                    <circle cx="20" cy="20" r="9" fill="#ffd84d" stroke="#e6a92a" stroke-width="1"/>
+                </svg>`,
+            // Sun setting — full dark-red disc sitting low over a dusky horizon.
+            // No side-rays (they were reading as angry eyebrows on the half-disc).
+            sunsetSun: `
+                <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" aria-label="Západ slunce">
+                    <defs>
+                        <linearGradient id="sunsetGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%"  stop-color="#e06a2e"/>
+                            <stop offset="60%" stop-color="#a8321a"/>
+                            <stop offset="100%" stop-color="#5a140c"/>
+                        </linearGradient>
+                        <linearGradient id="duskSky" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%"   stop-color="#5a2a2a"/>
+                            <stop offset="100%" stop-color="#1a0e12"/>
+                        </linearGradient>
+                    </defs>
+                    <rect x="0" y="0"  width="40" height="26" fill="url(#duskSky)" opacity="0.6"/>
+                    <rect x="0" y="26" width="40" height="14" fill="#1a0e12"/>
+                    <circle cx="20" cy="24" r="9" fill="url(#sunsetGrad)"/>
+                    <line x1="2"  y1="26" x2="38" y2="26" stroke="#c9a06a" stroke-width="0.8" opacity="0.6"/>
+                    <ellipse cx="20" cy="26" rx="11" ry="1.2" fill="#ff8a3d" opacity="0.35"/>
+                </svg>`,
+        };
+
+        // Returns the icon row for the current span/half-day, as [{percent, markupKey}, ...].
+        // 24h span → five landmarks at 0h, 6h, 12h, 18h, 24h.
+        // 12h span AM (midnight→noon) → midnight, sunrise, noon at 0/50/100%.
+        // 12h span PM (noon→midnight) → noon, sunset, midnight at 0/50/100%.
+        function skyIconLayoutFor(hoursSpan, isPmHalfDay) {
+            if (hoursSpan === 24) {
+                return [
+                    { percent: 0,   key: 'nightStars' },
+                    { percent: 25,  key: 'dawnSun'    },
+                    { percent: 50,  key: 'noonSun'    },
+                    { percent: 75,  key: 'sunsetSun'  },
+                    { percent: 100, key: 'nightMoon'  },
+                ];
+            }
+            if (isPmHalfDay) {
+                return [
+                    { percent: 0,   key: 'noonSun'   },
+                    { percent: 50,  key: 'sunsetSun' },
+                    { percent: 100, key: 'nightMoon' },
+                ];
+            }
+            return [
+                { percent: 0,   key: 'nightStars' },
+                { percent: 50,  key: 'dawnSun'    },
+                { percent: 100, key: 'noonSun'    },
+            ];
+        }
+
+        let timelineBuiltForKey = null;
+        function buildTimeline(hoursSpan, isPmHalfDay) {
+            const buildKey = hoursSpan + ':' + (isPmHalfDay ? 'pm' : 'am');
+            if (timelineBuiltForKey === buildKey) return;
+            timelineBuiltForKey = buildKey;
+            // Remove existing ticks/labels/icons but keep the sky SVG and the two thumbs.
+            [...timelineTrack.children].forEach(child => {
+                if (child.classList && (
+                    child.classList.contains('timeline-tick')  ||
+                    child.classList.contains('timeline-label') ||
+                    child.classList.contains('timeline-icon')
+                )) timelineTrack.removeChild(child);
+            });
+            // 4 quarter-hour subdivisions per hour: quarter, half, quarter, hour.
+            const subdivisionsPerHour = 4;
+            const totalSubs = hoursSpan * subdivisionsPerHour;
+            const trackHeightPx = timelineTrack.getBoundingClientRect().height || 72;
+            for (let subIndex = 0; subIndex <= totalSubs; subIndex++) {
+                const percent = (subIndex / totalSubs) * 100;
+                const tick = document.createElement('div');
+                const positionInHour = subIndex % subdivisionsPerHour;
+                let tickClass, tickHeightPx;
+                if (positionInHour === 0)      { tickClass = 'major';   tickHeightPx = 14; }
+                else if (positionInHour === 2) { tickClass = 'half';    tickHeightPx = 10; }
+                else                           { tickClass = 'quarter'; tickHeightPx = 6;  }
+                tick.className = 'timeline-tick ' + tickClass;
+                tick.style.left = percent + '%';
+                // Sit each tick centered on the arc line so the sweep stays legible.
+                const arcTopPx = (arcTopPercentAt(percent) / 100) * trackHeightPx;
+                tick.style.top = (arcTopPx - tickHeightPx / 2) + 'px';
+                timelineTrack.appendChild(tick);
+            }
+            // Hour labels below (major ticks only).
+            // 12h span → labels 0 (12), 1, 2, …, 11, 12 (noon/midnight bookends).
+            // 24h span → labels 0, 1, 2, …, 23, 24 (midnight bookends).
+            for (let hourIndex = 0; hourIndex <= hoursSpan; hourIndex++) {
+                const percent = (hourIndex / hoursSpan) * 100;
+                const label = document.createElement('div');
+                label.className = 'timeline-label';
+                if (hourIndex === 0) label.classList.add('edge-start');
+                else if (hourIndex === hoursSpan) label.classList.add('edge-end');
+                label.style.left = percent + '%';
+                // Place labels just below the arc so they read like a horizon line.
+                const arcTopPx = (arcTopPercentAt(percent) / 100) * trackHeightPx;
+                label.style.top = (arcTopPx + 10) + 'px';
+                let labelValue;
+                if (hoursSpan === 12) {
+                    if (hourIndex === 0) labelValue = '0 (12)';
+                    else if (hourIndex === 12) labelValue = '12';
+                    else labelValue = String(hourIndex);
+                } else {
+                    labelValue = String(hourIndex);
+                }
+                label.textContent = labelValue;
+                timelineTrack.appendChild(label);
+            }
+            // Sky icons ride the arc too, but offset downward so they sit just below
+            // the "rainbow" curve rather than on top of it.
+            const iconRow = skyIconLayoutFor(hoursSpan, isPmHalfDay);
+            const iconBelowArcPx = 26;
+            for (const { percent, key } of iconRow) {
+                const iconElement = document.createElement('div');
+                iconElement.className = 'timeline-icon';
+                if (percent === 0) iconElement.classList.add('edge-start');
+                else if (percent === 100) iconElement.classList.add('edge-end');
+                iconElement.style.left = percent + '%';
+                const arcTopPx = (arcTopPercentAt(percent) / 100) * trackHeightPx;
+                iconElement.style.top = (arcTopPx + iconBelowArcPx) + 'px';
+                iconElement.innerHTML = SKY_ICON_MARKUP[key];
+                timelineTrack.appendChild(iconElement);
+            }
+        }
+        function positionThumbOnArc(thumbElement, percent) {
+            thumbElement.style.left = percent + '%';
+            thumbElement.style.top  = arcTopPercentAt(percent) + '%';
+        }
+        function updateTimelineThumb(fractionalHoursIntoSpan, hoursSpan) {
+            positionThumbOnArc(timelineThumb, (fractionalHoursIntoSpan / hoursSpan) * 100);
+        }
+        function updateTimelineManualThumb(fractionalHoursIntoSpan, hoursSpan) {
+            positionThumbOnArc(timelineThumbManual, (fractionalHoursIntoSpan / hoursSpan) * 100);
+        }
+
+        // Rebuild tick/label/icon positions when the track resizes (they are pinned in pixels).
+        if ('ResizeObserver' in window) {
+            const timelineResizeObserver = new ResizeObserver(() => {
+                const previousKey = timelineBuiltForKey;
+                if (previousKey == null) return;
+                const [spanText, halfText] = previousKey.split(':');
+                timelineBuiltForKey = null;
+                buildTimeline(Number(spanText), halfText === 'pm');
+            });
+            timelineResizeObserver.observe(timelineTrack);
+        }
+
+        // -------- Manual time (lock/unlock) --------
+        // When unlocked, `manualTimeMs` holds the user-picked wall-clock timestamp.
+        // `savedManualTimeMs` persists the last manual time so re-unlocking restores it.
+        let manualTimeMs = null;
+        let savedManualTimeMs = null;
+
+        // -------- URL state sync --------
+        // Shareable links: all active controls live in the query string. On load the
+        // page restores state from there; every control change rewrites the URL via
+        // history.replaceState so copying the address bar captures the current view.
+        // Defaults are omitted from the URL so common links stay short.
+        function readUrlState() {
+            const params = new URLSearchParams(window.location.search);
+            const mode = params.get('m');
+            const hourFormat = params.get('h');
+            const lockedRaw = params.get('l');
+            const timeRaw = params.get('t');
+            let manualTimeMsFromUrl = null;
+            if (timeRaw) {
+                const match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(timeRaw);
+                if (match) {
+                    const hoursPart   = Math.min(23, Math.max(0, Number(match[1])));
+                    const minutesPart = Math.min(59, Math.max(0, Number(match[2])));
+                    const secondsPart = match[3] ? Math.min(59, Math.max(0, Number(match[3]))) : 0;
+                    const base = new Date();
+                    base.setHours(hoursPart, minutesPart, secondsPart, 0);
+                    manualTimeMsFromUrl = base.getTime();
+                }
+            }
+            return {
+                mode:        mode === 'd' ? 'digital' : 'analog',
+                split:       params.get('s') === '1',
+                both:        params.get('b') === '1',
+                jump:        params.get('j') === '1',
+                hour24:      hourFormat === '24',
+                locked:      lockedRaw !== '0',
+                manualTimeMs: manualTimeMsFromUrl,
+            };
+        }
+        function applyStateToDom(state) {
+            document.body.dataset.mode    = state.mode;
+            document.body.dataset.split   = state.split  ? 'true' : 'false';
+            document.body.dataset.both    = state.both   ? 'true' : 'false';
+            document.body.dataset.jump    = state.jump   ? 'true' : 'false';
+            document.body.dataset.hour24  = state.hour24 ? 'true' : 'false';
+            document.body.dataset.locked  = state.locked ? 'true' : 'false';
+            const selectedModeInput = document.querySelector('.mode-switch input[value="' + state.mode + '"]');
+            if (selectedModeInput) selectedModeInput.checked = true;
+            document.getElementById('split-toggle').checked  = state.split;
+            document.getElementById('both-toggle').checked   = state.both;
+            document.getElementById('jump-toggle').checked   = state.jump;
+            document.getElementById('hour24-toggle').checked = state.hour24;
+            document.getElementById('lock-toggle').checked   = state.locked;
+            // When unlocked AND a manual time came from the URL, use it; otherwise
+            // seed with now so the orange thumb has somewhere to sit.
+            if (!state.locked) {
+                manualTimeMs = state.manualTimeMs != null ? state.manualTimeMs : Date.now();
+                savedManualTimeMs = manualTimeMs;
+            }
+        }
+        let urlWriteScheduled = false;
+        function writeStateToUrl() {
+            if (urlWriteScheduled) return;
+            urlWriteScheduled = true;
+            requestAnimationFrame(() => {
+                urlWriteScheduled = false;
+                const params = new URLSearchParams();
+                if (document.body.dataset.mode   === 'digital') params.set('m', 'd');
+                if (document.body.dataset.split  === 'true')    params.set('s', '1');
+                if (document.body.dataset.both   === 'true')    params.set('b', '1');
+                if (document.body.dataset.jump   === 'true')    params.set('j', '1');
+                if (document.body.dataset.hour24 === 'true')    params.set('h', '24');
+                if (document.body.dataset.locked === 'false') {
+                    params.set('l', '0');
+                    if (manualTimeMs != null) {
+                        const snapshot = new Date(manualTimeMs);
+                        const hh = String(snapshot.getHours()).padStart(2, '0');
+                        const mm = String(snapshot.getMinutes()).padStart(2, '0');
+                        const ss = String(snapshot.getSeconds()).padStart(2, '0');
+                        params.set('t', `${hh}:${mm}:${ss}`);
+                    }
+                }
+                const queryString = params.toString();
+                const newUrl = window.location.pathname + (queryString ? ('?' + queryString) : '') + window.location.hash;
+                window.history.replaceState(null, '', newUrl);
+            });
+        }
+
+        function effectiveNow() {
+            if (document.body.dataset.locked === 'false' && manualTimeMs != null) {
+                return new Date(manualTimeMs);
+            }
+            return new Date();
+        }
+
+        // Convert a fraction-of-span (0..1) to a wall-clock timestamp today.
+        // In 12h mode, map to the half-day that currently contains the real wall clock
+        // (so unlocking in the afternoon starts the drag inside PM).
+        function fractionToTimestamp(fractionOfSpan, hoursSpan) {
+            const boundedFraction = Math.max(0, Math.min(1, fractionOfSpan));
+            const totalHoursFromMidnight = hoursSpan === 24
+                ? boundedFraction * 24
+                : (new Date().getHours() >= 12 ? 12 : 0) + boundedFraction * 12;
+            const wholeHours = Math.floor(totalHoursFromMidnight);
+            const fractionalHour = totalHoursFromMidnight - wholeHours;
+            const totalMinutes = fractionalHour * 60;
+            const wholeMinutes = Math.floor(totalMinutes);
+            const wholeSeconds = Math.floor((totalMinutes - wholeMinutes) * 60);
+            const base = new Date();
+            base.setHours(wholeHours, wholeMinutes, wholeSeconds, 0);
+            return base.getTime();
+        }
+
+        function pointerFractionFromEvent(event) {
+            const rect = timelineTrack.getBoundingClientRect();
+            return (event.clientX - rect.left) / rect.width;
+        }
+
+        let isDraggingManual = false;
+        function startManualDrag(event) {
+            if (document.body.dataset.locked === 'true') return;
+            isDraggingManual = true;
+            event.preventDefault();
+            updateManualFromEvent(event);
+        }
+        function updateManualFromEvent(event) {
+            const hoursSpan = document.body.dataset.hour24 === 'true' ? 24 : 12;
+            const fraction = pointerFractionFromEvent(event);
+            manualTimeMs = fractionToTimestamp(fraction, hoursSpan);
+            savedManualTimeMs = manualTimeMs;
+            tick();
+            writeStateToUrl();
+        }
+        timelineThumbManual.addEventListener('pointerdown', event => {
+            timelineThumbManual.setPointerCapture(event.pointerId);
+            startManualDrag(event);
+        });
+        // Also allow clicking anywhere on the track to jump the manual thumb there.
+        timelineTrack.addEventListener('pointerdown', event => {
+            if (event.target === timelineThumbManual) return;
+            if (document.body.dataset.locked === 'true') return;
+            timelineThumbManual.setPointerCapture(event.pointerId);
+            startManualDrag(event);
+        });
+        timelineThumbManual.addEventListener('pointermove', event => {
+            if (isDraggingManual) updateManualFromEvent(event);
+        });
+        timelineThumbManual.addEventListener('pointerup',     () => { isDraggingManual = false; });
+        timelineThumbManual.addEventListener('pointercancel', () => { isDraggingManual = false; });
+
+        // -------- Update functions --------
+        // hourAngleDegrees: already converted (12h: hours12 * 30; 24h: hours24 * 15).
+        function updateAnalogUnifiedInstance(instance, hourAngleDegrees, fractionalMinutes, fractionalSeconds) {
+            instance.hands.hour.setAttribute('transform',   `rotate(${hourAngleDegrees})`);
+            instance.hands.minute.setAttribute('transform', `rotate(${fractionalMinutes * 6})`);
+            instance.hands.second.setAttribute('transform', `rotate(${fractionalSeconds * 6})`);
+        }
+        function updateAnalogSplitInstance(splitInstance, hourAngleDegrees, fractionalMinutes, fractionalSeconds) {
+            splitInstance.hours.hands.hour.setAttribute('transform',     `rotate(${hourAngleDegrees})`);
+            splitInstance.minutes.hands.minute.setAttribute('transform', `rotate(${fractionalMinutes * 6})`);
+            splitInstance.seconds.hands.second.setAttribute('transform', `rotate(${fractionalSeconds * 6})`);
+        }
+        // Rewrite the numerals on every hour face.
+        // Face geometry stays the same (12 positions, hand rotates 30°/h) — only the labels change.
+        // With the 24h toggle on, the 13..23, 0 labels are added as a smaller outer ring
+        // next to the primary 1..12 numerals.
+        let currentNumeralMode = null;  // track last-applied mode to avoid DOM churn
+        function setAnalogNumeralLabels(isHour24Toggle) {
+            const mode = isHour24Toggle ? 'dual' : 'twelve';
+            if (currentNumeralMode === mode) return;
+            currentNumeralMode = mode;
+            const hourFaces = [
+                unifiedAnalog, unifiedAnalogSecondary,
+                splitAnalog.hours, splitAnalogSecondary.hours,
+            ];
+            for (const face of hourFaces) {
+                if (face && face.faceKind === 'hour') {
+                    populateHourNumerals(
+                        face.numeralsGroup,
+                        HOUR_LABELS_12,
+                        isHour24Toggle ? HOUR_LABELS_24 : null
+                    );
+                }
+            }
+        }
+        function setAmPm(ampm, isPm) {
+            if (!ampm) return;
+            ampm.amText.setAttribute('class', isPm ? 'ampm-label' : 'ampm-label ampm-on');
+            ampm.pmText.setAttribute('class', isPm ? 'ampm-label ampm-on' : 'ampm-label');
+        }
+        function updateDigitalUnifiedInstance(instance, hoursString, minutesString, secondsString, msString, colonOn, isPm) {
+            const allDigits = hoursString + minutesString + secondsString;
+            for (let digitIndex = 0; digitIndex < 6; digitIndex++) {
+                setSevenSegmentDigit(instance.digits[digitIndex], allDigits[digitIndex]);
+            }
+            for (let msDigitIndex = 0; msDigitIndex < 3; msDigitIndex++) {
+                setSevenSegmentDigit(instance.msDigits[msDigitIndex], msString[msDigitIndex]);
+            }
+            const colonClass = colonOn ? 'colon-dot' : 'colon-off';
+            for (const colonPair of instance.colons) {
+                for (const colonDot of colonPair) {
+                    colonDot.setAttribute('class', colonClass);
+                }
+            }
+            setAmPm(instance.ampm, isPm);
+        }
+        function updateDigitalSplitInstance(splitInstance, hoursString, minutesString, secondsString, msString, isPm) {
+            setSevenSegmentDigit(splitInstance.hours.digits[0],   hoursString[0]);
+            setSevenSegmentDigit(splitInstance.hours.digits[1],   hoursString[1]);
+            setSevenSegmentDigit(splitInstance.minutes.digits[0], minutesString[0]);
+            setSevenSegmentDigit(splitInstance.minutes.digits[1], minutesString[1]);
+            setSevenSegmentDigit(splitInstance.seconds.digits[0], secondsString[0]);
+            setSevenSegmentDigit(splitInstance.seconds.digits[1], secondsString[1]);
+            setSevenSegmentDigit(splitInstance.ms.digits[0], msString[0]);
+            setSevenSegmentDigit(splitInstance.ms.digits[1], msString[1]);
+            setSevenSegmentDigit(splitInstance.ms.digits[2], msString[2]);
+            setAmPm(splitInstance.hours.ampm, isPm);
+        }
+
+        // -------- Tick loop --------
+        function tick() {
+            const currentTime = effectiveNow();
+            const rawSeconds = currentTime.getSeconds() + currentTime.getMilliseconds() / 1000;
+            const rawMinutes = currentTime.getMinutes() + rawSeconds / 60;
+            const hour24Value = currentTime.getHours();
+            const rawHours12 = (hour24Value % 12) + rawMinutes / 60;
+            const rawHours24 = hour24Value + rawMinutes / 60;
+
+            const currentMode = document.body.dataset.mode;
+            const isSplit = document.body.dataset.split === 'true';
+            const isJump = document.body.dataset.jump === 'true';
+            const isBoth = document.body.dataset.both === 'true';
+            const isHour24 = document.body.dataset.hour24 === 'true';
+
+            // In jump mode, seconds and minutes advance in whole steps (hour hand stays smooth).
+            const displaySeconds = isJump ? Math.floor(rawSeconds) : rawSeconds;
+            const displayMinutes = isJump ? Math.floor(rawMinutes) : rawMinutes;
+            // Analog face always has 12 positions; 24h adds the 13..23, 0 labels as an outer ring.
+            const hourAngleDegrees = rawHours12 * 30;
+            setAnalogNumeralLabels(isHour24);
+
+            // Timeline spans 12h (AM or PM half-day) or 24h (full day).
+            // In 12h mode, the icon set differs between AM and PM half-days.
+            const timelineSpan = isHour24 ? 24 : 12;
+            const isPmHalfDay = !isHour24 && hour24Value >= 12;
+            buildTimeline(timelineSpan, isPmHalfDay);
+            const fractionalHoursIntoSpan = isHour24
+                ? rawHours24
+                : (hour24Value % 12) + rawMinutes / 60;
+            updateTimelineThumb(fractionalHoursIntoSpan, timelineSpan);
+            // The live (red) thumb always reflects real wall-clock time; when unlocked,
+            // the manual (orange) thumb reflects the user-picked time instead.
+            const isLocked = document.body.dataset.locked !== 'false';
+            if (isLocked) {
+                updateTimelineManualThumb(fractionalHoursIntoSpan, timelineSpan);
+            } else {
+                const manual = new Date(manualTimeMs);
+                const manualHours24 = manual.getHours() + manual.getMinutes() / 60 + manual.getSeconds() / 3600;
+                const manualFraction = isHour24 ? manualHours24 : (manual.getHours() % 12) + manual.getMinutes() / 60;
+                updateTimelineManualThumb(manualFraction, timelineSpan);
+                // The live (red) thumb should show real time regardless of lock state.
+                const real = new Date();
+                const realHours24 = real.getHours() + real.getMinutes() / 60 + real.getSeconds() / 3600;
+                const realFraction = isHour24 ? realHours24 : (real.getHours() % 12) + real.getMinutes() / 60;
+                updateTimelineThumb(realFraction, timelineSpan);
+            }
+
+            // Digital hour string: 24h → 00..23; 12h → 01..12.
+            const isPm = hour24Value >= 12;
+            const hours12Display = ((hour24Value % 12) === 0) ? 12 : (hour24Value % 12);
+            const hoursString = isHour24
+                ? String(hour24Value).padStart(2, '0')
+                : String(hours12Display).padStart(2, '0');
+            const minutesString = String(currentTime.getMinutes()).padStart(2, '0');
+            const secondsString = String(currentTime.getSeconds()).padStart(2, '0');
+            const msString = String(currentTime.getMilliseconds()).padStart(3, '0');
+            const colonOn = currentTime.getMilliseconds() < 500;
+
+            if (currentMode === 'analog') {
+                if (isSplit) {
+                    updateAnalogSplitInstance(splitAnalog, hourAngleDegrees, displayMinutes, displaySeconds);
+                    if (isBoth) {
+                        updateDigitalSplitInstance(splitDigitalSecondary, hoursString, minutesString, secondsString, msString, isPm);
+                    }
+                } else {
+                    updateAnalogUnifiedInstance(unifiedAnalog, hourAngleDegrees, displayMinutes, displaySeconds);
+                    if (isBoth) {
+                        updateDigitalUnifiedInstance(unifiedDigitalSecondary, hoursString, minutesString, secondsString, msString, colonOn, isPm);
+                    }
+                }
+            } else {
+                if (isSplit) {
+                    updateDigitalSplitInstance(splitDigital, hoursString, minutesString, secondsString, msString, isPm);
+                    if (isBoth) {
+                        updateAnalogSplitInstance(splitAnalogSecondary, hourAngleDegrees, displayMinutes, displaySeconds);
+                    }
+                } else {
+                    updateDigitalUnifiedInstance(unifiedDigital, hoursString, minutesString, secondsString, msString, colonOn, isPm);
+                    if (isBoth) {
+                        updateAnalogUnifiedInstance(unifiedAnalogSecondary, hourAngleDegrees, displayMinutes, displaySeconds);
+                    }
+                }
+            }
+
+            requestAnimationFrame(tick);
+        }
+
+        // -------- Control wiring --------
+        for (const radioInput of document.querySelectorAll('.mode-switch input')) {
+            radioInput.addEventListener('change', event => {
+                document.body.dataset.mode = event.target.value;
+                writeStateToUrl();
+            });
+        }
+        document.getElementById('split-toggle').addEventListener('change', event => {
+            document.body.dataset.split = event.target.checked ? 'true' : 'false';
+            writeStateToUrl();
+        });
+        document.getElementById('jump-toggle').addEventListener('change', event => {
+            document.body.dataset.jump = event.target.checked ? 'true' : 'false';
+            writeStateToUrl();
+        });
+        document.getElementById('both-toggle').addEventListener('change', event => {
+            document.body.dataset.both = event.target.checked ? 'true' : 'false';
+            writeStateToUrl();
+        });
+        document.getElementById('hour24-toggle').addEventListener('change', event => {
+            document.body.dataset.hour24 = event.target.checked ? 'true' : 'false';
+            // The tick loop will sync labels on the next frame, but update immediately
+            // so the change feels instant.
+            setAnalogNumeralLabels(event.target.checked);
+            writeStateToUrl();
+        });
+        // -------- Text-to-speech (Czech) --------
+        // Modern browsers expose a mix of local (robotic) and cloud "Natural" voices —
+        // e.g. "Microsoft Jakub Online (Natural) - Czech" in Edge, "Google čeština" in
+        // Chrome. Voices populate asynchronously, so we wait for onvoiceschanged.
+        const voiceSelect = document.getElementById('voice-select');
+        let cachedCzechVoices = [];
+        function isCloudQualityVoice(voice) {
+            const name = (voice.name || '').toLowerCase();
+            return name.includes('natural') || name.includes('google') || name.includes('neural') || name.includes('online');
+        }
+        function rankVoice(voice) {
+            // Higher is better: prefer Natural/Neural/Google, then cs-CZ over generic cs, then anything Czech.
+            let score = 0;
+            if (isCloudQualityVoice(voice)) score += 100;
+            if ((voice.lang || '').toLowerCase() === 'cs-cz') score += 10;
+            if ((voice.lang || '').toLowerCase().startsWith('cs')) score += 1;
+            return score;
+        }
+        // Voice preference lives in localStorage — it's a per-device setting, not part of
+        // the shareable URL (voice names are not portable across browsers/OSes).
+        const VOICE_STORAGE_KEY = 'split-clocks.voice';
+        function readStoredVoiceName() {
+            try { return window.localStorage.getItem(VOICE_STORAGE_KEY) || ''; }
+            catch { return ''; }
+        }
+        function storeVoiceName(name) {
+            try {
+                if (name) window.localStorage.setItem(VOICE_STORAGE_KEY, name);
+                else window.localStorage.removeItem(VOICE_STORAGE_KEY);
+            } catch { /* storage unavailable — silently ignore */ }
+        }
+        function refreshCzechVoices() {
+            if (!('speechSynthesis' in window)) return;
+            const allVoices = window.speechSynthesis.getVoices();
+            cachedCzechVoices = allVoices
+                .filter(voice => (voice.lang || '').toLowerCase().startsWith('cs'))
+                .sort((a, b) => rankVoice(b) - rankVoice(a));
+            // Prefer the user's stored choice, then whatever is currently selected,
+            // so reloading or voices loading late doesn't drop their pick.
+            const storedName = readStoredVoiceName();
+            const previousName = voiceSelect.value || storedName;
+            voiceSelect.innerHTML = '';
+            if (cachedCzechVoices.length === 0) {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = '(žádný český hlas)';
+                voiceSelect.appendChild(option);
+                return;
+            }
+            for (const voice of cachedCzechVoices) {
+                const option = document.createElement('option');
+                option.value = voice.name;
+                const quality = isCloudQualityVoice(voice) ? ' ✨' : '';
+                option.textContent = `${voice.name} (${voice.lang})${quality}`;
+                voiceSelect.appendChild(option);
+            }
+            if (previousName && cachedCzechVoices.some(voice => voice.name === previousName)) {
+                voiceSelect.value = previousName;
+            }
+        }
+        function selectedCzechVoice() {
+            const byName = cachedCzechVoices.find(voice => voice.name === voiceSelect.value);
+            return byName || cachedCzechVoices[0] || null;
+        }
+        function buildCzechTimePhrase(currentTime) {
+            const hours = currentTime.getHours();
+            const minutes = currentTime.getMinutes();
+            const hoursWord = (hours === 1) ? 'hodina' : (hours >= 2 && hours <= 4) ? 'hodiny' : 'hodin';
+            const minutesWord = (minutes === 1) ? 'minuta' : (minutes >= 2 && minutes <= 4) ? 'minuty' : 'minut';
+            if (minutes === 0) {
+                return `Je ${hours} ${hoursWord}.`;
+            }
+            return `Je ${hours} ${hoursWord} a ${minutes} ${minutesWord}.`;
+        }
+        function speakCurrentTime() {
+            if (!('speechSynthesis' in window)) return;
+            const utterance = new SpeechSynthesisUtterance(buildCzechTimePhrase(effectiveNow()));
+            utterance.lang = 'cs-CZ';
+            const voice = selectedCzechVoice();
+            if (voice) utterance.voice = voice;
+            window.speechSynthesis.cancel();
+            window.speechSynthesis.speak(utterance);
+        }
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.onvoiceschanged = refreshCzechVoices;
+            refreshCzechVoices();
+        }
+        document.getElementById('speak-button').addEventListener('click', speakCurrentTime);
+
+        document.getElementById('lock-toggle').addEventListener('change', event => {
+            const isLockedNow = event.target.checked;
+            document.body.dataset.locked = isLockedNow ? 'true' : 'false';
+            if (isLockedNow) {
+                // Re-lock: stop using the manual time; remember it for the next unlock.
+                manualTimeMs = null;
+            } else {
+                // Unlock: restore the last manual time, or seed with the current real time.
+                manualTimeMs = savedManualTimeMs != null ? savedManualTimeMs : Date.now();
+                savedManualTimeMs = manualTimeMs;
+            }
+            tick();
+            writeStateToUrl();
+        });
+        voiceSelect.addEventListener('change', () => storeVoiceName(voiceSelect.value));
+
+        // Apply shareable URL state (mode/split/both/jump/hour24/locked/manual time)
+        // before the first paint so the page opens directly in the shared view.
+        const initialUrlState = readUrlState();
+        applyStateToDom(initialUrlState);
+
+        // Initialize analog numerals according to the initial 12/24 state.
+        setAnalogNumeralLabels(document.body.dataset.hour24 === 'true');
+
+        requestAnimationFrame(tick);
+    </script>
+</body>
+</html>
