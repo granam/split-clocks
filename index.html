@@ -339,7 +339,7 @@
         body[data-hour24="true"] .ampm-indicator { display: none; }
     </style>
 </head>
-<body data-mode="analog" data-split="false" data-jump="false" data-both="false" data-hour24="false" data-locked="false">
+<body data-mode="analog" data-split="true" data-jump="false" data-both="true" data-hour24="false" data-locked="false">
     <div class="controls">
         <div class="mode-switch" role="radiogroup" aria-label="Režim hodin">
             <input type="radio" id="mode-analog" name="mode" value="analog" checked>
@@ -348,13 +348,13 @@
             <label for="mode-digital">Digitální</label>
         </div>
         <label class="split-toggle">
-            <input type="checkbox" id="both-toggle">
+            <input type="checkbox" id="both-toggle" checked>
             <span>Oboje</span>
         </label>
     </div>
     <div class="controls">
         <label class="split-toggle">
-            <input type="checkbox" id="split-toggle">
+            <input type="checkbox" id="split-toggle" checked>
             <span>Rozděleně</span>
         </label>
         <label class="split-toggle">
@@ -1040,8 +1040,8 @@
             }
             return {
                 mode:        mode === 'd' ? 'digital' : 'analog',
-                split:       params.get('s') === '1',
-                both:        params.get('b') === '1',
+                split:       params.get('s') !== '0',
+                both:        params.get('b') !== '0',
                 jump:        params.get('j') === '1',
                 hour24:      hourFormat === '24',
                 locked:      lockedRaw === '1',
@@ -1078,8 +1078,8 @@
                 urlWriteScheduled = false;
                 const params = new URLSearchParams();
                 if (document.body.dataset.mode   === 'digital') params.set('m', 'd');
-                if (document.body.dataset.split  === 'true')    params.set('s', '1');
-                if (document.body.dataset.both   === 'true')    params.set('b', '1');
+                if (document.body.dataset.split  === 'false')   params.set('s', '0');
+                if (document.body.dataset.both   === 'false')   params.set('b', '0');
                 if (document.body.dataset.jump   === 'true')    params.set('j', '1');
                 if (document.body.dataset.hour24 === 'true')    params.set('h', '24');
                 if (document.body.dataset.locked === 'true') {
