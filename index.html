@@ -339,7 +339,7 @@
         body[data-hour24="true"] .ampm-indicator { display: none; }
     </style>
 </head>
-<body data-mode="analog" data-split="false" data-jump="false" data-both="false" data-hour24="false" data-locked="true">
+<body data-mode="analog" data-split="false" data-jump="false" data-both="false" data-hour24="false" data-locked="false">
     <div class="controls">
         <div class="mode-switch" role="radiogroup" aria-label="Režim hodin">
             <input type="radio" id="mode-analog" name="mode" value="analog" checked>
@@ -366,7 +366,7 @@
             <span>12/24</span>
         </label>
         <label class="split-toggle lock-toggle" title="Zamknout čas / odemknout pro ruční změnu">
-            <input type="checkbox" id="lock-toggle" checked>
+            <input type="checkbox" id="lock-toggle">
             <span class="lock-icon" aria-label="Zamknout čas"></span>
         </label>
         <button type="button" id="speak-button" class="speak-button" title="Přečíst čas nahlas" aria-label="Přečíst čas nahlas">🔊</button>
@@ -1044,7 +1044,7 @@
                 both:        params.get('b') === '1',
                 jump:        params.get('j') === '1',
                 hour24:      hourFormat === '24',
-                locked:      lockedRaw !== '0',
+                locked:      lockedRaw === '1',
                 manualTimeMs: manualTimeMsFromUrl,
             };
         }
@@ -1062,10 +1062,11 @@
             document.getElementById('jump-toggle').checked   = state.jump;
             document.getElementById('hour24-toggle').checked = state.hour24;
             document.getElementById('lock-toggle').checked   = state.locked;
-            // When unlocked AND a manual time came from the URL, use it; otherwise
-            // seed with now so the orange thumb has somewhere to sit.
-            if (!state.locked) {
-                manualTimeMs = state.manualTimeMs != null ? state.manualTimeMs : Date.now();
+            // Unlocked is the default, so a plain visit must keep running live:
+            // adopt a manual time only when the link carried one. Without it
+            // `manualTimeMs` stays null and the clock ticks until the user drags.
+            if (!state.locked && state.manualTimeMs != null) {
+                manualTimeMs = state.manualTimeMs;
                 savedManualTimeMs = manualTimeMs;
             }
         }
@@ -1081,15 +1082,14 @@
                 if (document.body.dataset.both   === 'true')    params.set('b', '1');
                 if (document.body.dataset.jump   === 'true')    params.set('j', '1');
                 if (document.body.dataset.hour24 === 'true')    params.set('h', '24');
-                if (document.body.dataset.locked === 'false') {
-                    params.set('l', '0');
-                    if (manualTimeMs != null) {
-                        const snapshot = new Date(manualTimeMs);
-                        const hh = String(snapshot.getHours()).padStart(2, '0');
-                        const mm = String(snapshot.getMinutes()).padStart(2, '0');
-                        const ss = String(snapshot.getSeconds()).padStart(2, '0');
-                        params.set('t', `${hh}:${mm}:${ss}`);
-                    }
+                if (document.body.dataset.locked === 'true') {
+                    params.set('l', '1');
+                } else if (manualTimeMs != null) {
+                    const snapshot = new Date(manualTimeMs);
+                    const hh = String(snapshot.getHours()).padStart(2, '0');
+                    const mm = String(snapshot.getMinutes()).padStart(2, '0');
+                    const ss = String(snapshot.getSeconds()).padStart(2, '0');
+                    params.set('t', `${hh}:${mm}:${ss}`);
                 }
                 const queryString = params.toString();
                 const newUrl = window.location.pathname + (queryString ? ('?' + queryString) : '') + window.location.hash;
@@ -1262,7 +1262,7 @@
             // The live (red) thumb always reflects real wall-clock time; when unlocked,
             // the manual (orange) thumb reflects the user-picked time instead.
             const isLocked = document.body.dataset.locked !== 'false';
-            if (isLocked) {
+            if (isLocked || manualTimeMs == null) {
                 updateTimelineManualThumb(fractionalHoursIntoSpan, timelineSpan);
             } else {
                 const manual = new Date(manualTimeMs);
@@ -1438,9 +1438,9 @@
                 // Re-lock: stop using the manual time; remember it for the next unlock.
                 manualTimeMs = null;
             } else {
-                // Unlock: restore the last manual time, or seed with the current real time.
-                manualTimeMs = savedManualTimeMs != null ? savedManualTimeMs : Date.now();
-                savedManualTimeMs = manualTimeMs;
+                // Unlock: restore the last manual time if there is one; with none,
+                // stay on live time rather than freezing at the moment of unlocking.
+                manualTimeMs = savedManualTimeMs;
             }
             tick();
             writeStateToUrl();
