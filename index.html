@@ -191,7 +191,24 @@
             fill: #c0392b;
             stroke: #1a1d22;
             stroke-width: 1;
+            pointer-events: none;
         }
+        /* Much wider than the hand itself, so small fingers find it. */
+        .hand-grab-area {
+            stroke: transparent;
+            stroke-width: 18;
+            pointer-events: none;
+        }
+        .hand > line:not(.hand-grab-area) { pointer-events: none; }
+        body[data-locked="false"] .hand-grab-area {
+            pointer-events: stroke;
+            cursor: grab;
+        }
+        /* Browsers ignore touch-action on shapes inside an SVG, so the whole face opts out
+           of panning; without it a finger drag scrolls instead and the hand stops after a few degrees. */
+        body[data-locked="false"] svg.analog-clock { touch-action: none; }
+        .hand.dragging > line:not(.hand-grab-area) { stroke: #f39c12; }
+        .hand.dragging .hand-grab-area { cursor: grabbing; }
 
         /* Skokově: hide ms readouts in digital modes. */
         body[data-jump="true"] .ms-region { display: none; }
@@ -480,6 +497,19 @@
         const HOUR_LABELS_12 = ['1','2','3','4','5','6','7','8','9','10','11','12'];
         const HOUR_LABELS_24 = ['13','14','15','16','17','18','19','20','21','22','23','0'];
 
+        // A group, so rotating the hand turns its invisible grab area with it.
+        function buildDraggableHand(clockSvg, handKind, tailY, tipY) {
+            const handGroup = createSvgElement('g', { class: 'hand', 'data-hand-kind': handKind });
+            handGroup.appendChild(createSvgElement('line', {
+                class: 'hand-grab-area', x1: 0, y1: tailY, x2: 0, y2: tipY - 8,
+            }));
+            handGroup.appendChild(createSvgElement('line', {
+                class: `hand-${handKind}`, x1: 0, y1: tailY, x2: 0, y2: tipY,
+            }));
+            clockSvg.appendChild(handGroup);
+            return handGroup;
+        }
+
         function buildAnalogClockSvg(options) {
             const {
                 includeHourHand = true,
@@ -490,6 +520,7 @@
             } = options;
 
             const clockSvg = createSvgElement('svg', {
+                class: 'analog-clock',
                 viewBox: '-100 -100 200 200',
                 role: 'img',
                 'aria-label': ariaLabel,
@@ -520,30 +551,21 @@
             }
             clockSvg.appendChild(numeralsGroup);
 
-            // Hands.
             const hands = {};
             if (includeHourHand) {
-                hands.hour = createSvgElement('line', {
-                    class: 'hand-hour', x1: 0, y1: 10, x2: 0, y2: -50,
-                });
-                clockSvg.appendChild(hands.hour);
+                hands.hour = buildDraggableHand(clockSvg, 'hour', 10, -50);
             }
             if (includeMinuteHand) {
-                hands.minute = createSvgElement('line', {
-                    class: 'hand-minute', x1: 0, y1: 14, x2: 0, y2: -72,
-                });
-                clockSvg.appendChild(hands.minute);
+                hands.minute = buildDraggableHand(clockSvg, 'minute', 14, -72);
             }
             if (includeSecondHand) {
-                hands.second = createSvgElement('line', {
-                    class: 'hand-second', x1: 0, y1: 20, x2: 0, y2: -80,
-                });
-                clockSvg.appendChild(hands.second);
+                hands.second = buildDraggableHand(clockSvg, 'second', 20, -80);
             }
 
             clockSvg.appendChild(createSvgElement('circle', {
                 class: 'pin', cx: 0, cy: 0, r: 3,
             }));
+            makeHandsDraggable(clockSvg);
 
             return { clockSvg, hands, numeralsGroup, faceKind };
         }
@@ -1139,7 +1161,7 @@
             const fraction = pointerFractionFromEvent(event);
             manualTimeMs = fractionToTimestamp(fraction, hoursSpan);
             savedManualTimeMs = manualTimeMs;
-            tick();
+            render();
             writeStateToUrl();
         }
         timelineThumbManual.addEventListener('pointerdown', event => {
@@ -1158,6 +1180,81 @@
         });
         timelineThumbManual.addEventListener('pointerup',     () => { isDraggingManual = false; });
         timelineThumbManual.addEventListener('pointercancel', () => { isDraggingManual = false; });
+
+        // -------- Dragging clock hands --------
+        // A drag turns the time by how far the hand turned, like the crown of a real clock:
+        // a minute hand passing 12 moves the hour on, and the hour hand carries the minutes with it.
+        const MS_PER_HAND_DEGREE = {
+            hour:   12 * 3600 * 1000 / 360,
+            minute: 3600 * 1000 / 360,
+            second: 60 * 1000 / 360,
+        };
+
+        function pointerAngleDegrees(clockSvg, event) {
+            const pointInClock = new DOMPoint(event.clientX, event.clientY)
+                .matrixTransform(clockSvg.getScreenCTM().inverse());
+            // Near the pin the angle swings wildly with every pixel, so ignore it there.
+            if (Math.hypot(pointInClock.x, pointInClock.y) < 10) return null;
+            return Math.atan2(pointInClock.x, -pointInClock.y) * 180 / Math.PI;
+        }
+
+        // Where hands overlap, the shorter one wins: the longer ones still stick out
+        // past it and can be grabbed there, the shorter one has nowhere else.
+        const HAND_GRAB_PRIORITY = ['hour', 'minute', 'second'];
+
+        function handGroupUnderPointer(clockSvg, event) {
+            const handGroupsHit = document.elementsFromPoint(event.clientX, event.clientY)
+                .filter(element => element.classList.contains('hand-grab-area') && clockSvg.contains(element))
+                .map(grabArea => grabArea.parentNode);
+            for (const handKind of HAND_GRAB_PRIORITY) {
+                const handGroup = handGroupsHit.find(group => group.dataset.handKind === handKind);
+                if (handGroup) return handGroup;
+            }
+            return null;
+        }
+
+        // One drag for the whole page: each drag carries its own running time, so two
+        // at once (two fingers, or two clocks) would keep overwriting each other.
+        let handDrag = null;
+
+        function makeHandsDraggable(clockSvg) {
+            clockSvg.addEventListener('pointerdown', event => {
+                if (document.body.dataset.locked === 'true' || handDrag != null || event.button !== 0) return;
+                const handGroup = handGroupUnderPointer(clockSvg, event);
+                const startAngle = pointerAngleDegrees(clockSvg, event);
+                if (handGroup == null || startAngle == null) return;
+                event.preventDefault();
+                clockSvg.setPointerCapture(event.pointerId);
+                handGroup.classList.add('dragging');
+                // Kept unrounded so slow drags of the second hand still add up.
+                handDrag = { pointerId: event.pointerId, handGroup, lastAngle: startAngle, timeMs: effectiveNow().getTime() };
+                applyHandDrag();
+            });
+            clockSvg.addEventListener('pointermove', event => {
+                if (handDrag == null || event.pointerId !== handDrag.pointerId) return;
+                const angle = pointerAngleDegrees(clockSvg, event);
+                if (angle == null) return;
+                const deltaDegrees = ((angle - handDrag.lastAngle + 540) % 360) - 180;
+                handDrag.lastAngle = angle;
+                handDrag.timeMs += deltaDegrees * MS_PER_HAND_DEGREE[handDrag.handGroup.dataset.handKind];
+                applyHandDrag();
+            });
+            const endDrag = event => {
+                if (handDrag == null || event.pointerId !== handDrag.pointerId) return;
+                handDrag.handGroup.classList.remove('dragging');
+                handDrag = null;
+            };
+            clockSvg.addEventListener('pointerup', endDrag);
+            clockSvg.addEventListener('pointercancel', endDrag);
+            clockSvg.addEventListener('lostpointercapture', endDrag);
+        }
+
+        function applyHandDrag() {
+            manualTimeMs = Math.round(handDrag.timeMs / 1000) * 1000;
+            savedManualTimeMs = manualTimeMs;
+            render();
+            writeStateToUrl();
+        }
 
         // -------- Update functions --------
         // hourAngleDegrees: already converted (12h: hours12 * 30; 24h: hours24 * 15).
@@ -1228,8 +1325,14 @@
             setAmPm(splitInstance.hours.ampm, isPm);
         }
 
-        // -------- Tick loop --------
+        // -------- Render loop --------
+        // Interactions call render() directly; only tick() may reschedule itself,
+        // otherwise every drag event would start one more endless loop.
         function tick() {
+            render();
+            requestAnimationFrame(tick);
+        }
+        function render() {
             const currentTime = effectiveNow();
             const rawSeconds = currentTime.getSeconds() + currentTime.getMilliseconds() / 1000;
             const rawMinutes = currentTime.getMinutes() + rawSeconds / 60;
@@ -1312,8 +1415,6 @@
                     }
                 }
             }
-
-            requestAnimationFrame(tick);
         }
 
         // -------- Control wiring --------
@@ -1442,7 +1543,7 @@
                 // stay on live time rather than freezing at the moment of unlocking.
                 manualTimeMs = savedManualTimeMs;
             }
-            tick();
+            render();
             writeStateToUrl();
         });
         voiceSelect.addEventListener('change', () => storeVoiceName(voiceSelect.value));
